@@ -19,6 +19,7 @@ Unity 기반 1인칭 3D 공포게임 프로젝트입니다.
 | 프로젝트명 | HorrorGame "The Kyungil" |
 | 장르 | 1인칭 3D 공포 / 탐색 / 퍼즐 |
 | 개발 형태 | 2인 협업 프로젝트 |
+| 협업 팀원 | [roomMaker](https://github.com/roomMaker)
 | 개발 환경 | Unity 2021.3.6f1, C# |
 | 주요 담당 | 맵 제작, 레벨 구성, 오브젝트 배치, 조명·분위기 구성 |
 | 구현 방식 | 플레이어, 상호작용, 인벤토리, 퍼즐, 이벤트 시스템을 팀원과 공동 구현 |
@@ -52,9 +53,9 @@ Unity 기반 1인칭 3D 공포게임 프로젝트입니다.
 맵 제작은 제가 직접 담당했으며, 구현은 팀원과 거의 함께 진행했습니다.
 
 다만 원본 프로젝트의 commit 기록만으로 개인별 구현 범위를 정확히 나누기는 어렵습니다.  
-개발 당시 Unity 씬과 프리팹 merge 과정에서 문제가 자주 발생했고, 제가 작업한 내용을 Zip 파일로 전달한 뒤 `roomMaker` 계정에서 다시 commit한 경우가 있었습니다.
+개발 당시 Unity 씬과 프리팹 merge 과정에서 문제가 자주 발생했고, 제가 작업한 내용을 Zip 파일로 전달한 뒤 팀원 계정에서 다시 commit한 경우가 있었습니다.
 
-그 결과 `roomMaker`의 commit 수가 더 많게 보이지만, 실제 작업 비중을 commit author만으로 판단하기는 어렵습니다.  
+그 결과 팀원의 commit 수가 더 많게 보이지만, 실제 작업 비중을 commit 횟수만으로 판단하기는 어렵습니다.  
 따라서 이 문서에서는 개인 담당이 명확한 영역과 협업 구현 영역을 구분해 정리했습니다.
 
 ### 개인 담당으로 명확한 영역
@@ -241,7 +242,7 @@ Raycast 기반으로 오브젝트를 감지하고, 오브젝트 종류에 따라
 
 Unity 프로젝트는 씬과 프리팹 충돌이 자주 발생하기 때문에, 당시처럼 Zip 파일로 전달하고 한 명이 다시 commit하는 방식은 이력 관리에 한계가 있었습니다.
 
-다음 프로젝트에서는 다음 방식을 적용할 계획입니다.
+이 프로젝트를 다시 제작한다면, 다음과 같은 사항들을 고려해볼 것 같습니다.
 
 - 기능 단위 브랜치와 Pull Request 사용
 - 씬 또는 프리팹 담당 범위 사전 분리
@@ -250,3 +251,50 @@ Unity 프로젝트는 씬과 프리팹 충돌이 자주 발생하기 때문에, 
 - Git LFS로 대용량 바이너리 에셋 관리
 - commit message에 실제 작업 범위 명확히 기록
 - Zip 전달 대신 branch, patch, PR 기반으로 변경사항 공유
+
+### 코드 구조 개선 방향
+
+프로젝트를 다시 정리하면서 확인해보니, 기능 자체는 동작하도록 구현되어 있지만 이벤트성 스크립트가 지나치게 많이 분리되어 있는 부분이 있었습니다.  
+특히 `HospitalMap` 폴더에는 특정 상황 하나를 처리하기 위한 스크립트가 여러 개 존재합니다.
+
+예를 들어 특정 트리거에 들어가면 오브젝트를 끄는 `ColliderOff`, 의사 오브젝트를 비활성화하는 `DissapearAI`, 플레이어가 들어오면 의사와 이벤트 오브젝트를 켜는 `DoctorSayHI`, 특정 위치에서 조명을 켜는 `ShowerRoomLightOn`, 사운드 오브젝트를 켜고 끄는 `STOP`, `Stop_Stop` 같은 스크립트들이 각각 따로 작성되어 있습니다.
+
+이 스크립트들은 대부분 공통적으로 다음과 같은 단순 동작을 수행합니다.
+
+- 특정 Trigger 또는 Collision 감지
+- Player 또는 Doctor 태그 확인
+- 특정 GameObject 활성화 / 비활성화
+- 사운드 또는 조명 오브젝트 On/Off
+- 한 번 실행 후 자기 자신 비활성화
+- 간단한 안내 텍스트 출력
+
+당시에는 빠르게 이벤트를 붙이고 씬에서 바로 확인하는 방식으로 개발했기 때문에 기능별 스크립트가 계속 늘어났습니다.  
+하지만 지금 기준에서 보면, 이런 단순 이벤트 로직은 각각 별도 클래스로 만들기보다 Unity의 Inspector와 `UnityEvent`를 활용한 범용 Trigger Event 컴포넌트로 통합하는 편이 더 적절했습니다.
+
+예를 들어 `TriggerEventHandler` 같은 공통 스크립트를 만들고, `OnTriggerEnter`, `OnTriggerExit`, `OnCollisionStay` 같은 이벤트 시점에 실행할 동작을 Inspector에서 연결했다면 다음과 같은 장점이 있었을 것입니다.
+
+- 비슷한 스크립트 중복 제거
+- 이벤트 추가 시 새 C# 파일을 만들 필요 감소
+- 씬에서 어떤 오브젝트가 켜지고 꺼지는지 Inspector 기준으로 확인 가능
+- 기획 변경 시 코드 수정 없이 UnityEvent 연결만 변경 가능
+- 특정 맵 전용 스크립트가 늘어나는 문제 완화
+
+또한 상호작용 시스템도 개선 여지가 있었습니다.  
+프로젝트에는 `IInteraction` 인터페이스가 존재하지만, 실제 플레이어 상호작용 처리에서는 `PlayerRay`가 태그별로 `DoorInteraction`, `ItemInteraction`, `MonitorInteraction`, `CofferInteraction`, `VentInteraction` 등을 직접 분기하고 각각의 컴포넌트를 가져오는 방식으로 구현되어 있습니다.
+
+이 방식은 기능이 늘어날수록 `PlayerRay`에 조건문과 전용 메서드가 계속 추가되는 구조입니다.  
+다음 프로젝트에서는 모든 상호작용 오브젝트가 공통 인터페이스를 구현하도록 만들고, 플레이어는 Raycast로 감지한 대상에서 `IInteraction`만 가져와 실행하는 방식으로 개선할 수 있습니다.
+
+```csharp
+if (Physics.Raycast(transform.position, transform.forward, out hit, distance))
+{
+    if (hit.transform.TryGetComponent<IInteraction>(out var interaction))
+    {
+        UIManager.Instance.DrawInteractText(interaction.InteractionText);
+
+        if (Input.GetKeyDown(KeyCode.E) && !GameManager.Instance.IsPaused)
+        {
+            interaction.Interact();
+        }
+    }
+}
